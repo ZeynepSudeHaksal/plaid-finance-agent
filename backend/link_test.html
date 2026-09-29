@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Finance Agent — Plaid Link Test</title>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 480px; margin: 80px auto; text-align: center; }
+  button { font-size: 16px; padding: 12px 24px; border-radius: 8px; border: none;
+           background: #000; color: #fff; cursor: pointer; margin-top: 16px; }
+  button:disabled { background: #999; cursor: not-allowed; }
+  pre { text-align: left; background: #f4f4f4; padding: 16px; border-radius: 8px;
+        overflow-x: auto; font-size: 13px; margin-top: 24px; }
+  #status { color: #666; margin-top: 12px; }
+</style>
+</head>
+<body>
+  <h2>Finance Agent — Link Test</h2>
+  <p>This is a throwaway test page. It talks to your local backend at
+     <code>localhost:8000</code> and opens real Plaid Link in Sandbox mode.</p>
+
+  <button id="link-btn">Connect a (fake) bank</button>
+  <button id="sync-btn" disabled>Sync transactions</button>
+
+  <div id="status"></div>
+  <pre id="output"></pre>
+
+  <script>
+    const API_BASE = "http://localhost:8000";
+    const statusEl = document.getElementById("status");
+    const outputEl = document.getElementById("output");
+    const linkBtn = document.getElementById("link-btn");
+    const syncBtn = document.getElementById("sync-btn");
+
+    function log(label, data) {
+      outputEl.textContent = `${label}\n` + JSON.stringify(data, null, 2) + "\n\n" + outputEl.textContent;
+    }
+
+    linkBtn.addEventListener("click", async () => {
+      statusEl.textContent = "Requesting link token...";
+      linkBtn.disabled = true;
+
+      try {
+        const res = await fetch(`${API_BASE}/link/token`, { method: "POST" });
+        if (!res.ok) throw new Error(`link/token failed: ${res.status}`);
+        const { link_token } = await res.json();
+
+        const handler = Plaid.create({
+          token: link_token,
+          onSuccess: async (public_token, metadata) => {
+            statusEl.textContent = "Exchanging public token...";
+            const exchangeRes = await fetch(`${API_BASE}/link/exchange`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                public_token,
+                institution_name: metadata.institution ? metadata.institution.name : null,
+              }),
+            });
+            const exchangeData = await exchangeRes.json();
+            log("Linked", exchangeData);
+            statusEl.textContent = "Bank linked. Now sync transactions.";
+            syncBtn.disabled = false;
+            linkBtn.disabled = false;
+          },
+          onExit: (err, metadata) => {
+            statusEl.textContent = err ? "Link exited with an error." : "Link closed.";
+            linkBtn.disabled = false;
+            if (err) log("Link exit error", err);
+          },
+        });
+
+        handler.open();
+        statusEl.textContent = "Plaid Link opened — pick any bank, use user_good / pass_good.";
+      } catch (e) {
+        statusEl.textContent = "Error: " + e.message;
+        linkBtn.disabled = false;
+      }
+    });
+
+    syncBtn.addEventListener("click", async () => {
+      statusEl.textContent = "Syncing transactions...";
+      syncBtn.disabled = true;
+      try {
+        const res = await fetch(`${API_BASE}/transactions/sync`, { method: "POST" });
+        const data = await res.json();
+        log("Sync result", data);
+
+        const txRes = await fetch(`${API_BASE}/transactions?limit=10`);
+        const txns = await txRes.json();
+        log("Latest transactions", txns);
+
+        statusEl.textContent = `Synced. ${data.transactions_added} transactions added.`;
+      } catch (e) {
+        statusEl.textContent = "Error: " + e.message;
+      }
+      syncBtn.disabled = false;
+    });
+  </script>
+</body>
+</html>
