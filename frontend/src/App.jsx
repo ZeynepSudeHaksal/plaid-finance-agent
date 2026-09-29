@@ -11,9 +11,10 @@ export default function App() {
 
   return (
     <div className="app">
-      <header>
+      <div className="masthead">
         <h1>Finance Agent</h1>
-      </header>
+        <span className="tag">{linked ? "sandbox · connected" : "sandbox mode"}</span>
+      </div>
 
       {!linked ? (
         <ConnectBank onLinked={() => setLinked(true)} />

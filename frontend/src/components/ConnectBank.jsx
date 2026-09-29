@@ -63,9 +63,9 @@ export default function ConnectBank({ onLinked }) {
         }}
         disabled={!ready || status === "linking" || status === "syncing"}
       >
-        {status === "linking" && "Linking..."}
-        {status === "syncing" && "Syncing transactions..."}
-        {status === "idle" || status === "loading" ? "Connect a bank" : null}
+        {status === "linking" && "Linking…"}
+        {status === "syncing" && "Syncing transactions…"}
+        {(status === "idle" || status === "loading" || status === "error") && "Connect a bank"}
       </button>
 
       {error && <p className="error">Error: {error}</p>}

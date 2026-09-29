@@ -1,111 +1,276 @@
+/* ---------------------------------------------------------------
+   Design tokens. Aesthetic: a bank statement / ledger, not a SaaS
+   dashboard. Amounts are set in a monospace face so they align the
+   way real statement figures do; everything else stays quiet.
+   ----------------------------------------------------------------*/
+:root {
+  --paper: #f5f6f3;
+  --paper-raised: #fbfbfa;
+  --ink: #12161f;
+  --ink-soft: #565b52;
+  --ink-faint: #8a8f85;
+  --line: #dbdcd6;
+  --line-strong: #c3c5bd;
+
+  --accent: #0f5257;      /* primary actions */
+  --accent-ink: #ffffff;
+  --spend: #7a3030;        /* money out */
+  --income: #2c6e49;       /* money in / positive */
+
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
 * { box-sizing: border-box; }
 
-body {
+html, body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #f7f7f8;
-  color: #1a1a1a;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
 }
 
 .app {
-  max-width: 720px;
+  max-width: 680px;
   margin: 0 auto;
-  padding: 32px 20px 80px;
+  padding: 48px 24px 96px;
 }
 
-header h1 {
-  font-size: 22px;
-  margin-bottom: 24px;
+/* --- Masthead --------------------------------------------------- */
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 18px;
+  margin-bottom: 40px;
 }
+
+.masthead h1 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 26px;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.masthead .tag {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+/* --- Connect screen ----------------------------------------------*/
 
 .connect-bank {
-  background: #fff;
-  border-radius: 12px;
-  padding: 32px;
-  text-align: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--line);
+  padding: 40px 32px;
+  text-align: left;
+}
+
+.connect-bank h2 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 21px;
+  margin: 0 0 8px;
 }
 
 .hint {
-  color: #666;
-  font-size: 14px;
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  margin: 0 0 24px;
+  max-width: 46ch;
+}
+
+.hint code {
+  font-family: var(--font-mono);
+  background: var(--line);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12.5px;
 }
 
 .error {
-  color: #c0392b;
-  font-size: 14px;
+  color: var(--spend);
+  font-size: 13.5px;
+  margin-top: 14px;
 }
 
 button {
-  font-size: 15px;
-  padding: 10px 20px;
-  border-radius: 8px;
-  border: none;
-  background: #111;
-  color: #fff;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 14px;
+  padding: 11px 22px;
+  border-radius: 3px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
   cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: #0c4245;
+  border-color: #0c4245;
 }
 
 button:disabled {
-  background: #aaa;
+  background: var(--paper-raised);
+  border-color: var(--line-strong);
+  color: var(--ink-faint);
   cursor: not-allowed;
 }
+
+/* --- Dashboard ----------------------------------------------------*/
 
 .dashboard {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 44px;
 }
 
-.transaction-list,
-.chat {
-  background: #fff;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+/* --- Transaction ledger -------------------------------------------*/
+
+.transaction-list h3,
+.chat h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 15px;
+  text-transform: none;
+  color: var(--ink-soft);
+  margin: 0 0 4px;
+  letter-spacing: 0.01em;
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
+.ledger-total {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  margin: 2px 0 20px;
+  letter-spacing: -0.01em;
+}
+
+.ledger {
+  border-top: 1px solid var(--ink);
+}
+
+.ledger-row {
+  display: grid;
+  grid-template-columns: 3px 84px 1fr auto;
+  gap: 14px;
+  align-items: baseline;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ledger-row .bar {
+  align-self: stretch;
+  border-radius: 1px;
+}
+
+.ledger-row .date {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.ledger-row .merchant {
   font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-th, td {
-  text-align: left;
-  padding: 8px 6px;
-  border-bottom: 1px solid #eee;
+.ledger-row .merchant .category {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  margin-top: 1px;
 }
 
-.amount-out { color: #c0392b; }
-.amount-in { color: #27ae60; }
+.ledger-row .amount {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.amount.out { color: var(--spend); }
+.amount.in { color: var(--income); }
+
+/* --- Chat ----------------------------------------------------------*/
+
+.chat {
+  border-top: 1px solid var(--ink);
+  padding-top: 20px;
+}
 
 .chat-messages {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-height: 320px;
+  gap: 16px;
+  max-height: 420px;
   overflow-y: auto;
-  margin-bottom: 12px;
+  padding: 4px 2px 18px;
 }
 
 .chat-bubble {
-  padding: 10px 14px;
-  border-radius: 12px;
-  max-width: 80%;
   font-size: 14px;
-  line-height: 1.4;
-}
-
-.chat-bubble.assistant {
-  background: #f0f0f2;
-  align-self: flex-start;
+  line-height: 1.6;
+  max-width: 88%;
 }
 
 .chat-bubble.user {
-  background: #111;
-  color: #fff;
   align-self: flex-end;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 10px 14px;
+  border-radius: 3px;
+}
+
+.chat-bubble.assistant {
+  align-self: flex-start;
+  border-left: 2px solid var(--accent);
+  padding-left: 14px;
+}
+
+.chat-bubble.assistant p {
+  margin: 0 0 10px;
+}
+.chat-bubble.assistant p:last-child {
+  margin-bottom: 0;
+}
+
+.chat-bubble.assistant table {
+  border-collapse: collapse;
+  margin: 8px 0 12px;
+  font-size: 13.5px;
+}
+
+.chat-bubble.assistant th,
+.chat-bubble.assistant td {
+  text-align: left;
+  padding: 5px 16px 5px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.chat-bubble.assistant th {
+  color: var(--ink-soft);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.chat-bubble.assistant td:not(:first-child),
+.chat-bubble.assistant th:not(:first-child) {
+  font-family: var(--font-mono);
+}
+
+.chat-bubble.assistant strong {
+  font-weight: 600;
 }
 
 .chat-input-row {
@@ -116,7 +281,29 @@ th, td {
 .chat-input-row input {
   flex: 1;
   padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid #ddd;
+  border-radius: 3px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper-raised);
+  font-family: var(--font-body);
   font-size: 14px;
+  color: var(--ink);
+}
+
+.chat-input-row input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.chat-input-row input::placeholder {
+  color: var(--ink-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button { transition: none; }
+}
+
+@media (max-width: 480px) {
+  .app { padding: 32px 16px 72px; }
+  .ledger-row { grid-template-columns: 3px 64px 1fr auto; gap: 10px; }
+  .ledger-total { font-size: 24px; }
 }

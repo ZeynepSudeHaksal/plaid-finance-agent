@@ -1,16 +1,14 @@
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api } from "../api";
 
-/**
- * Chat UI for talking to the finance agent.
- *
- * NOTE: this calls POST /chat on the backend, which doesn't exist yet —
- * that's the next piece to build (the LLM tool-calling loop). The UI is
- * wired up now so it's a drop-in once that endpoint is live.
- */
 export default function Chat() {
   const [messages, setMessages] = useState([
-    { role: "assistant", text: "Ask me about your spending — e.g. \"how much did I spend on food last month?\"" },
+    {
+      role: "assistant",
+      text: "Ask about your spending — e.g. \"how much did I spend on food last month?\"",
+    },
   ]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -29,7 +27,7 @@ export default function Chat() {
     } catch (e) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", text: `(backend /chat isn't built yet — ${e.message})` },
+        { role: "assistant", text: `Couldn't reach the agent — ${e.message}` },
       ]);
     } finally {
       setSending(false);
@@ -37,27 +35,32 @@ export default function Chat() {
   };
 
   return (
-    <div className="chat">
-      <h3>Ask your finance agent</h3>
+    <section className="chat">
+      <h3>Ask the agent</h3>
       <div className="chat-messages">
         {messages.map((m, i) => (
           <div key={i} className={`chat-bubble ${m.role}`}>
-            {m.text}
+            {m.role === "assistant" ? (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+            ) : (
+              m.text
+            )}
           </div>
         ))}
+        {sending && <div className="chat-bubble assistant hint">Thinking…</div>}
       </div>
       <div className="chat-input-row">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          placeholder="Ask a question about your finances..."
+          placeholder="Ask a question about your finances…"
           disabled={sending}
         />
         <button onClick={sendMessage} disabled={sending || !input.trim()}>
           Send
         </button>
       </div>
-    </div>
+    </section>
   );
 }
