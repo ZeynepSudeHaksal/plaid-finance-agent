@@ -7,7 +7,7 @@ SQLite store instead of hitting the Plaid API on every chat message.
 import os
 from datetime import datetime
 
-from sqlalchemy import create_engine, Column, String, Float, DateTime, Boolean, Integer, Text
+from sqlalchemy import create_engine, Column, String, Float, DateTime, Boolean, Integer, Text, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./finance_agent.db")
@@ -17,12 +17,24 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
+class User(Base):
+    """A registered account. Every other table is scoped to a user_id."""
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class PlaidItem(Base):
     """A linked 'bank connection'. In Sandbox this is a fake institution."""
 
     __tablename__ = "plaid_items"
 
     item_id = Column(String, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     access_token = Column(String, nullable=False)
     institution_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -35,6 +47,7 @@ class Transaction(Base):
 
     transaction_id = Column(String, primary_key=True)
     item_id = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # denormalized from PlaidItem, for easy filtering
     account_id = Column(String, nullable=False)
     date = Column(String, nullable=False)  # ISO format YYYY-MM-DD
     name = Column(String, nullable=False)  # merchant / description
@@ -49,16 +62,18 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     role = Column(String, nullable=False)  # "user" | "assistant"
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Budget(Base):
-    """A user-set monthly budget for a spending category. One row per category."""
+    """A user-set monthly budget for a spending category. One row per (user, category)."""
 
     __tablename__ = "budgets"
 
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     category = Column(String, primary_key=True)
     monthly_amount = Column(Float, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

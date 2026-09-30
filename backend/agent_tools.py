@@ -3,9 +3,14 @@ Tool functions the agent can call. Each one queries the local
 `transactions` table (populated by Plaid sync) and returns plain
 JSON-serializable data - no LLM calls happen in here, this is just
 the "hands" the agent uses.
+
+Every function takes `user_id` and filters by it - this is NOT part of
+the tool's LLM-facing schema (the model never sees or chooses it); the
+agent loop injects it automatically so one user's data is never visible
+to another's conversation.
 """
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from statistics import mean, stdev
 
 from sqlalchemy.orm import Session
@@ -13,13 +18,9 @@ from sqlalchemy.orm import Session
 from models import Transaction, Budget
 
 
-def _parse_date(date_str: str) -> datetime:
-    return datetime.strptime(date_str, "%Y-%m-%d")
-
-
-def get_transactions(db: Session, start_date: str = None, end_date: str = None, category: str = None) -> dict:
+def get_transactions(db: Session, user_id: int, start_date: str = None, end_date: str = None, category: str = None) -> dict:
     """Return raw transactions, optionally filtered by date range and/or category."""
-    query = db.query(Transaction)
+    query = db.query(Transaction).filter(Transaction.user_id == user_id)
     if start_date:
         query = query.filter(Transaction.date >= start_date)
     if end_date:
@@ -37,9 +38,9 @@ def get_transactions(db: Session, start_date: str = None, end_date: str = None, 
     }
 
 
-def categorize_spending(db: Session, start_date: str = None, end_date: str = None) -> dict:
+def categorize_spending(db: Session, user_id: int, start_date: str = None, end_date: str = None) -> dict:
     """Sum spending by category over an optional date range."""
-    query = db.query(Transaction).filter(Transaction.amount > 0)  # positive = money out
+    query = db.query(Transaction).filter(Transaction.user_id == user_id, Transaction.amount > 0)
     if start_date:
         query = query.filter(Transaction.date >= start_date)
     if end_date:
@@ -55,13 +56,13 @@ def categorize_spending(db: Session, start_date: str = None, end_date: str = Non
     }
 
 
-def detect_anomalies(db: Session, std_dev_threshold: float = 2.0) -> dict:
+def detect_anomalies(db: Session, user_id: int, std_dev_threshold: float = 2.0) -> dict:
     """
     Flag transactions that are unusually large relative to the typical
     transaction size within their own category (simple z-score outlier
     detection - good enough for a portfolio project, not a fraud engine).
     """
-    all_txns = db.query(Transaction).filter(Transaction.amount > 0).all()
+    all_txns = db.query(Transaction).filter(Transaction.user_id == user_id, Transaction.amount > 0).all()
 
     by_category = defaultdict(list)
     for t in all_txns:
@@ -93,7 +94,7 @@ def detect_anomalies(db: Session, std_dev_threshold: float = 2.0) -> dict:
     return {"anomalies": anomalies, "count": len(anomalies)}
 
 
-def calculate_budget_status(db: Session, category: str, budget_amount: float = None, start_date: str = None, end_date: str = None) -> dict:
+def calculate_budget_status(db: Session, user_id: int, category: str, budget_amount: float = None, start_date: str = None, end_date: str = None) -> dict:
     """
     Compare actual spending in a category against a budget figure. If
     budget_amount isn't given, looks up a stored budget for that
@@ -101,7 +102,7 @@ def calculate_budget_status(db: Session, category: str, budget_amount: float = N
     """
     used_stored_budget = False
     if budget_amount is None:
-        stored = db.query(Budget).filter(Budget.category == category).first()
+        stored = db.query(Budget).filter(Budget.user_id == user_id, Budget.category == category).first()
         if stored is None:
             return {
                 "category": category,
@@ -111,7 +112,9 @@ def calculate_budget_status(db: Session, category: str, budget_amount: float = N
         budget_amount = stored.monthly_amount
         used_stored_budget = True
 
-    query = db.query(Transaction).filter(Transaction.category == category, Transaction.amount > 0)
+    query = db.query(Transaction).filter(
+        Transaction.user_id == user_id, Transaction.category == category, Transaction.amount > 0
+    )
     if start_date:
         query = query.filter(Transaction.date >= start_date)
     if end_date:
@@ -131,23 +134,23 @@ def calculate_budget_status(db: Session, category: str, budget_amount: float = N
     }
 
 
-def get_budgets(db: Session) -> dict:
+def get_budgets(db: Session, user_id: int) -> dict:
     """Return all budgets the user currently has set."""
-    budgets = db.query(Budget).all()
+    budgets = db.query(Budget).filter(Budget.user_id == user_id).all()
     return {
         "budgets": [{"category": b.category, "monthly_amount": b.monthly_amount} for b in budgets],
         "count": len(budgets),
     }
 
 
-def forecast_next_month(db: Session) -> dict:
+def forecast_next_month(db: Session, user_id: int) -> dict:
     """
     Very simple forecast: average total monthly spend over however many
     months of data exist, projected forward one month. Not a real time
     series model - a clearly-labeled naive baseline is honest and is
     enough to demonstrate the concept.
     """
-    all_txns = db.query(Transaction).filter(Transaction.amount > 0).all()
+    all_txns = db.query(Transaction).filter(Transaction.user_id == user_id, Transaction.amount > 0).all()
     if not all_txns:
         return {"forecast": None, "note": "No transaction data available."}
 
@@ -168,13 +171,18 @@ def forecast_next_month(db: Session) -> dict:
     }
 
 
-def compare_periods(db: Session, period_a_start: str, period_a_end: str, period_b_start: str, period_b_end: str) -> dict:
+def compare_periods(db: Session, user_id: int, period_a_start: str, period_a_end: str, period_b_start: str, period_b_end: str) -> dict:
     """Compare total spending between two date ranges, e.g. this month vs last month."""
 
     def total_for(start, end):
         txns = (
             db.query(Transaction)
-            .filter(Transaction.date >= start, Transaction.date <= end, Transaction.amount > 0)
+            .filter(
+                Transaction.user_id == user_id,
+                Transaction.date >= start,
+                Transaction.date <= end,
+                Transaction.amount > 0,
+            )
             .all()
         )
         return sum(t.amount for t in txns)
@@ -193,8 +201,9 @@ def compare_periods(db: Session, period_a_start: str, period_a_end: str, period_
 
 
 # --- Tool schemas for the LLM (Anthropic tool-use format) ---
-# These descriptions are what the model reads to decide which tool to
-# call and with what arguments - keep them precise.
+# These describe only the arguments the MODEL supplies - user_id is
+# never part of this schema; the agent loop injects it separately so
+# the LLM can't (and doesn't need to) touch it.
 
 TOOL_SCHEMAS = [
     {

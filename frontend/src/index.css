@@ -16,6 +16,7 @@
   --accent-ink: #ffffff;
   --spend: #7a3030;        /* money out */
   --income: #2c6e49;       /* money in / positive */
+  --warn: #8a6d1f;         /* nearing budget */
 
   --font-display: "Fraunces", Georgia, serif;
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -64,6 +65,12 @@ html, body {
   color: var(--ink-faint);
 }
 
+.masthead-right {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
 /* --- Connect screen ----------------------------------------------*/
 
 .connect-bank {
@@ -100,6 +107,28 @@ html, body {
   margin-top: 14px;
 }
 
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 320px;
+}
+
+.auth-form input {
+  padding: 10px 12px;
+  border-radius: 3px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper-raised);
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.auth-form input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 button {
   font-family: var(--font-body);
   font-weight: 500;
@@ -133,9 +162,42 @@ button:disabled {
   gap: 44px;
 }
 
+/* --- Alerts ----------------------------------------------------------*/
+
+.alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid var(--line);
+}
+
+.alert-row {
+  display: grid;
+  grid-template-columns: 3px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--paper-raised);
+}
+
+.alert-row .bar {
+  align-self: stretch;
+  border-radius: 1px;
+}
+
+.alert-row.over .bar { background: var(--spend); }
+.alert-row.near .bar { background: var(--warn); }
+.alert-row.info .bar { background: var(--accent); }
+
+.alert-message {
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
 /* --- Transaction ledger -------------------------------------------*/
 
 .transaction-list h3,
+.spending-charts h3,
 .chat h3 {
   font-family: var(--font-display);
   font-weight: 500;

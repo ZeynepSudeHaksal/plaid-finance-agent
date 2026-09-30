@@ -1,27 +1,95 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api, getAuthToken, setAuthToken, setUnauthorizedHandler } from "./api";
+import AuthScreen from "./components/AuthScreen.jsx";
 import ConnectBank from "./components/ConnectBank.jsx";
+import AlertsBanner from "./components/AlertsBanner.jsx";
 import TransactionList from "./components/TransactionList.jsx";
+import SpendingCharts from "./components/SpendingCharts.jsx";
 import BudgetPanel from "./components/BudgetPanel.jsx";
 import Chat from "./components/Chat.jsx";
 
+const EMAIL_KEY = "finance_agent_email";
+
 export default function App() {
-  // Simple local flag — no persistence yet. Refreshing the page will
-  // ask you to reconnect, even though the backend still has the linked
-  // item. Good enough for now; revisit once there's a real user/session.
+  const [authed, setAuthed] = useState(!!getAuthToken());
+  const [email, setEmail] = useState(localStorage.getItem(EMAIL_KEY) || "");
   const [linked, setLinked] = useState(false);
+  const [checkingLink, setCheckingLink] = useState(true);
+
+  // If the backend ever rejects our token (expired, server restarted with a
+  // new JWT_SECRET, etc.), drop back to the login screen instead of the
+  // dashboard silently failing on every request.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setAuthed(false);
+      setLinked(false);
+    });
+  }, []);
+
+  // Once authenticated, check whether this account already has a linked
+  // bank (persists across refreshes now, unlike before auth existed).
+  useEffect(() => {
+    if (!authed) {
+      setCheckingLink(false);
+      return;
+    }
+    setCheckingLink(true);
+    api
+      .getLinkStatus()
+      .then((res) => setLinked(!!res.linked))
+      .catch(() => setLinked(false))
+      .finally(() => setCheckingLink(false));
+  }, [authed]);
+
+  const handleAuth = (token, userEmail) => {
+    setAuthToken(token);
+    localStorage.setItem(EMAIL_KEY, userEmail);
+    setEmail(userEmail);
+    setAuthed(true);
+  };
+
+  const handleLogout = () => {
+    setAuthToken(null);
+    localStorage.removeItem(EMAIL_KEY);
+    setAuthed(false);
+    setLinked(false);
+  };
+
+  if (!authed) {
+    return (
+      <div className="app">
+        <div className="masthead">
+          <h1>Finance Agent</h1>
+          <span className="tag">sign in</span>
+        </div>
+        <AuthScreen onAuth={handleAuth} />
+      </div>
+    );
+  }
 
   return (
     <div className="app">
       <div className="masthead">
         <h1>Finance Agent</h1>
-        <span className="tag">{linked ? "sandbox · connected" : "sandbox mode"}</span>
+        <div className="masthead-right">
+          <span className="tag">
+            {linked ? "sandbox · connected" : "sandbox mode"} · {email}
+          </span>
+          <button className="ghost-button" onClick={handleLogout}>
+            log out
+          </button>
+        </div>
       </div>
 
-      {!linked ? (
+      {checkingLink ? (
+        <p className="hint">Loading…</p>
+      ) : !linked ? (
         <ConnectBank onLinked={() => setLinked(true)} />
       ) : (
         <main className="dashboard">
+          <AlertsBanner />
           <TransactionList />
+          <SpendingCharts />
           <BudgetPanel />
           <Chat />
         </main>

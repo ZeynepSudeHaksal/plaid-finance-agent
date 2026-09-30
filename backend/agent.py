@@ -37,13 +37,17 @@ def _get_client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=api_key)
 
 
-def _execute_tool(db: Session, tool_name: str, tool_input: dict):
-    """Look up the tool function by name and call it with the DB session + args."""
+def _execute_tool(db: Session, tool_name: str, tool_input: dict, user_id: int):
+    """
+    Look up the tool function by name and call it with the DB session,
+    args, and user_id. user_id is injected here rather than coming from
+    the LLM's tool_input - the model never sees or controls it.
+    """
     fn = TOOL_FUNCTIONS.get(tool_name)
     if fn is None:
         return {"error": f"Unknown tool: {tool_name}"}
     try:
-        return fn(db=db, **tool_input)
+        return fn(db=db, user_id=user_id, **tool_input)
     except Exception as e:
         return {"error": str(e)}
 
@@ -51,7 +55,7 @@ def _execute_tool(db: Session, tool_name: str, tool_input: dict):
 MAX_HISTORY_TURNS = 12  # keep context from growing unbounded over a long session
 
 
-def run_agent(db: Session, user_message: str, history: list = None) -> tuple:
+def run_agent(db: Session, user_message: str, user_id: int, history: list = None) -> tuple:
     """
     Runs one user turn through the tool-calling loop.
 
@@ -103,7 +107,7 @@ def run_agent(db: Session, user_message: str, history: list = None) -> tuple:
         for block in response.content:
             if block.type != "tool_use":
                 continue
-            result = _execute_tool(db, block.name, block.input)
+            result = _execute_tool(db, block.name, block.input, user_id)
             tool_results.append(
                 {
                     "type": "tool_result",
