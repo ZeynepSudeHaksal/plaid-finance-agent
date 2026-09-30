@@ -20,9 +20,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from models import init_db, get_db, PlaidItem, Transaction
+from models import init_db, get_db, PlaidItem, Transaction, ChatMessage, Budget
 import plaid_client
 import agent
+from agent_tools import categorize_spending
 
 load_dotenv()
 
@@ -44,6 +45,30 @@ def on_startup():
 
 # A single hardcoded demo user for now - fine for a portfolio project.
 DEMO_USER_ID = "demo-user"
+
+# Conversation history lives in the chat_messages table now - persists
+# across server restarts. Still a single global conversation (no
+# auth/sessions yet); a real multi-user app would key this by user id.
+MAX_HISTORY_TURNS = 12  # keep context from growing unbounded over a long session
+
+
+def _load_history(db: Session) -> list:
+    """Load recent chat history from the DB as plain {role, content} dicts."""
+    rows = (
+        db.query(ChatMessage)
+        .order_by(ChatMessage.id.desc())
+        .limit(MAX_HISTORY_TURNS * 2)
+        .all()
+    )
+    rows.reverse()  # back to chronological order
+    return [{"role": r.role, "content": r.content} for r in rows]
+
+
+def _save_turn(db: Session, user_message: str, reply: str):
+    """Persist one user/assistant turn to the DB."""
+    db.add(ChatMessage(role="user", content=user_message))
+    db.add(ChatMessage(role="assistant", content=reply))
+    db.commit()
 
 
 class ExchangeRequest(BaseModel):
@@ -159,22 +184,85 @@ def list_transactions(db: Session = Depends(get_db), limit: int = 50):
 def chat(req: ChatRequest, db: Session = Depends(get_db)):
     """
     The agent endpoint. Runs the user's message through Claude with
-    tool-calling access to the local transaction data and returns the
-    final natural-language reply.
-
-    Note: no conversation memory yet - each call is independent. Good
-    enough to demo the tool-calling loop; multi-turn context is a
-    natural next improvement.
+    tool-calling access to the local transaction data, using persisted
+    conversation history so follow-up questions work across requests
+    (and survive a server restart).
     """
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="message cannot be empty")
 
+    history = _load_history(db)
+
     try:
-        reply = agent.run_agent(db, req.message)
+        reply, _ = agent.run_agent(db, req.message, history)
     except RuntimeError as e:
         # e.g. missing ANTHROPIC_API_KEY
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent error: {e}")
 
+    _save_turn(db, req.message, reply)
     return {"reply": reply}
+
+
+@app.post("/chat/reset")
+def reset_chat(db: Session = Depends(get_db)):
+    """Clear all conversation history - used by the UI's 'New conversation' button."""
+    db.query(ChatMessage).delete()
+    db.commit()
+    return {"status": "reset"}
+
+
+class BudgetRequest(BaseModel):
+    category: str
+    monthly_amount: float
+
+
+@app.get("/budgets")
+def list_budgets(db: Session = Depends(get_db)):
+    """List all stored budgets."""
+    budgets = db.query(Budget).all()
+    return [{"category": b.category, "monthly_amount": b.monthly_amount} for b in budgets]
+
+
+@app.post("/budgets")
+def set_budget(req: BudgetRequest, db: Session = Depends(get_db)):
+    """Create or update the budget for a category (upsert by category)."""
+    budget = Budget(category=req.category, monthly_amount=req.monthly_amount)
+    db.merge(budget)
+    db.commit()
+    return {"category": req.category, "monthly_amount": req.monthly_amount}
+
+
+@app.get("/categories")
+def list_categories(db: Session = Depends(get_db)):
+    """
+    Distinct categories actually present in the synced transactions, so
+    the frontend can offer a dropdown instead of free text - Plaid's raw
+    category strings (e.g. FOOD_AND_DRINK) don't match what the agent
+    displays in friendly prose, so free-text budget entry was error-prone.
+    """
+    rows = db.query(Transaction.category).distinct().all()
+    categories = sorted({r[0] for r in rows if r[0]})
+    return {"categories": categories}
+
+
+@app.get("/spending/by-category")
+def spending_by_category(db: Session = Depends(get_db), start_date: Optional[str] = None, end_date: Optional[str] = None):
+    """
+    Plain (non-agent) spending totals by category, for the budget UI's
+    progress bars. Reuses the same tool function the chat agent calls -
+    no LLM round trip needed for a straightforward data fetch like this.
+    """
+    return categorize_spending(db=db, start_date=start_date, end_date=end_date)
+
+
+@app.delete("/budgets/{category}")
+def delete_budget(category: str, db: Session = Depends(get_db)):
+    """Remove a category's budget."""
+    existing = db.query(Budget).filter(Budget.category == category).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"No budget set for '{category}'")
+    db.delete(existing)
+    db.commit()
+    return {"status": "deleted", "category": category}

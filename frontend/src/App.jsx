@@ -1,6 +1,7 @@
 import { useState } from "react";
 import ConnectBank from "./components/ConnectBank.jsx";
 import TransactionList from "./components/TransactionList.jsx";
+import BudgetPanel from "./components/BudgetPanel.jsx";
 import Chat from "./components/Chat.jsx";
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
       ) : (
         <main className="dashboard">
           <TransactionList />
+          <BudgetPanel />
           <Chat />
         </main>
       )}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { formatCategoryLabel } from "../format";
 
 // A small, deliberately muted palette assigned to category names as they
 // appear — not a generic badge system, just a way to let the eye group
@@ -66,7 +67,7 @@ export default function TransactionList() {
             <span className="date">{formatDate(t.date)}</span>
             <span className="merchant">
               {t.name}
-              <span className="category">{t.category ?? "Uncategorized"}</span>
+              <span className="category">{formatCategoryLabel(t.category)}</span>
             </span>
             <span className={`amount ${t.amount > 0 ? "out" : "in"}`}>
               {t.amount > 0 ? "−" : "+"}${Math.abs(t.amount).toFixed(2)}

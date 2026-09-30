@@ -25,11 +25,27 @@ export const api = {
 
   getTransactions: (limit = 50) => request(`/transactions?limit=${limit}`),
 
-  // Not built yet on the backend — wired up here so the UI is ready
-  // once the agent chat endpoint exists.
   sendChatMessage: (message) =>
     request("/chat", {
       method: "POST",
       body: JSON.stringify({ message }),
     }),
+
+  resetChat: () => request("/chat/reset", { method: "POST" }),
+
+  getCategories: () => request("/categories"),
+
+  getBudgets: () => request("/budgets"),
+
+  spendingByCategory: (startDate, endDate) =>
+    request(`/spending/by-category?start_date=${startDate}&end_date=${endDate}`),
+
+  setBudget: (category, monthly_amount) =>
+    request("/budgets", {
+      method: "POST",
+      body: JSON.stringify({ category, monthly_amount }),
+    }),
+
+  deleteBudget: (category) =>
+    request(`/budgets/${encodeURIComponent(category)}`, { method: "DELETE" }),
 };

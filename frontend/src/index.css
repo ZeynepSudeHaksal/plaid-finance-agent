@@ -202,11 +202,140 @@ button:disabled {
 .amount.out { color: var(--spend); }
 .amount.in { color: var(--income); }
 
+/* --- Budget panel ---------------------------------------------------*/
+
+.budget-panel h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 15px;
+  color: var(--ink-soft);
+  margin: 0 0 14px;
+}
+
+.budget-list {
+  border-top: 1px solid var(--ink);
+}
+
+.budget-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.budget-row-top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.budget-category {
+  font-size: 14px;
+  flex: 1;
+}
+
+.budget-figures {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.budget-figures .of {
+  font-family: var(--font-body);
+  color: var(--ink-faint);
+  font-size: 11.5px;
+}
+
+.budget-figures.over { color: var(--spend); }
+
+.budget-bar {
+  height: 4px;
+  background: var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.budget-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 200ms ease;
+}
+
+.budget-bar-fill.over { background: var(--spend); }
+
+.budget-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.budget-form input {
+  padding: 9px 11px;
+  border-radius: 3px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper-raised);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.budget-form select {
+  padding: 9px 11px;
+  border-radius: 3px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper-raised);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  color: var(--ink);
+  flex: 2;
+}
+
+.budget-form input { flex: 1; }
+
+.budget-form select:focus,
+.budget-form input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* --- Chat ----------------------------------------------------------*/
 
 .chat {
   border-top: 1px solid var(--ink);
   padding-top: 20px;
+}
+
+.chat-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.chat-header h3 {
+  margin: 0;
+}
+
+.ghost-button {
+  background: transparent;
+  border: none;
+  color: var(--ink-faint);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 4px 2px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ghost-button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--ink);
+}
+
+.ghost-button:disabled {
+  background: transparent;
+  border: none;
+  color: var(--line-strong);
 }
 
 .chat-messages {

@@ -10,7 +10,7 @@ from statistics import mean, stdev
 
 from sqlalchemy.orm import Session
 
-from models import Transaction
+from models import Transaction, Budget
 
 
 def _parse_date(date_str: str) -> datetime:
@@ -93,8 +93,24 @@ def detect_anomalies(db: Session, std_dev_threshold: float = 2.0) -> dict:
     return {"anomalies": anomalies, "count": len(anomalies)}
 
 
-def calculate_budget_status(db: Session, category: str, budget_amount: float, start_date: str = None, end_date: str = None) -> dict:
-    """Compare actual spending in a category against a budget figure."""
+def calculate_budget_status(db: Session, category: str, budget_amount: float = None, start_date: str = None, end_date: str = None) -> dict:
+    """
+    Compare actual spending in a category against a budget figure. If
+    budget_amount isn't given, looks up a stored budget for that
+    category (set via the budget UI or a prior chat message).
+    """
+    used_stored_budget = False
+    if budget_amount is None:
+        stored = db.query(Budget).filter(Budget.category == category).first()
+        if stored is None:
+            return {
+                "category": category,
+                "error": f"No budget amount given and no stored budget found for '{category}'. "
+                "Ask the user for a budget amount, or tell them to set one.",
+            }
+        budget_amount = stored.monthly_amount
+        used_stored_budget = True
+
     query = db.query(Transaction).filter(Transaction.category == category, Transaction.amount > 0)
     if start_date:
         query = query.filter(Transaction.date >= start_date)
@@ -107,10 +123,20 @@ def calculate_budget_status(db: Session, category: str, budget_amount: float, st
     return {
         "category": category,
         "budget": budget_amount,
+        "budget_source": "stored" if used_stored_budget else "given_in_message",
         "spent": round(spent, 2),
         "remaining": round(remaining, 2),
         "percent_used": round((spent / budget_amount) * 100, 1) if budget_amount else None,
         "over_budget": spent > budget_amount,
+    }
+
+
+def get_budgets(db: Session) -> dict:
+    """Return all budgets the user currently has set."""
+    budgets = db.query(Budget).all()
+    return {
+        "budgets": [{"category": b.category, "monthly_amount": b.monthly_amount} for b in budgets],
+        "count": len(budgets),
     }
 
 
@@ -209,17 +235,22 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "calculate_budget_status",
-        "description": "Compare actual spending in a category against a budget amount the user specifies.",
+        "description": "Compare actual spending in a category against a budget. If budget_amount is omitted, uses a stored budget for that category if one exists.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "category": {"type": "string"},
-                "budget_amount": {"type": "number"},
+                "budget_amount": {"type": "number", "description": "Omit to use the user's stored budget for this category, if any."},
                 "start_date": {"type": "string", "description": "YYYY-MM-DD, inclusive"},
                 "end_date": {"type": "string", "description": "YYYY-MM-DD, inclusive"},
             },
-            "required": ["category", "budget_amount"],
+            "required": ["category"],
         },
+    },
+    {
+        "name": "get_budgets",
+        "description": "List all budgets the user currently has set. Use for 'what budgets do I have' type questions.",
+        "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "forecast_next_month",
@@ -249,6 +280,7 @@ TOOL_FUNCTIONS = {
     "categorize_spending": categorize_spending,
     "detect_anomalies": detect_anomalies,
     "calculate_budget_status": calculate_budget_status,
+    "get_budgets": get_budgets,
     "forecast_next_month": forecast_next_month,
     "compare_periods": compare_periods,
 }

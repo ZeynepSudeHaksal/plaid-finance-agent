@@ -13,6 +13,22 @@ export default function Chat() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
 
+  const startNewConversation = async () => {
+    try {
+      await api.resetChat();
+    } catch {
+      // If the reset call fails, still clear the local view - worst
+      // case the backend's history lingers one extra turn, which the
+      // next message will naturally overwrite anyway.
+    }
+    setMessages([
+      {
+        role: "assistant",
+        text: "Ask about your spending — e.g. \"how much did I spend on food last month?\"",
+      },
+    ]);
+  };
+
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || sending) return;
@@ -36,7 +52,12 @@ export default function Chat() {
 
   return (
     <section className="chat">
-      <h3>Ask the agent</h3>
+      <div className="chat-header">
+        <h3>Ask the agent</h3>
+        <button className="ghost-button" onClick={startNewConversation} disabled={sending}>
+          New conversation
+        </button>
+      </div>
       <div className="chat-messages">
         {messages.map((m, i) => (
           <div key={i} className={`chat-bubble ${m.role}`}>

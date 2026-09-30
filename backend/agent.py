@@ -48,14 +48,28 @@ def _execute_tool(db: Session, tool_name: str, tool_input: dict):
         return {"error": str(e)}
 
 
-def run_agent(db: Session, user_message: str) -> str:
+MAX_HISTORY_TURNS = 12  # keep context from growing unbounded over a long session
+
+
+def run_agent(db: Session, user_message: str, history: list = None) -> tuple:
     """
-    Runs one user turn through the tool-calling loop and returns the
-    agent's final text reply. Stateless across calls for now - no
-    conversation history is kept between requests (see main.py note).
+    Runs one user turn through the tool-calling loop.
+
+    `history` is a plain list of {"role": "user"|"assistant", "content": str}
+    dicts from prior turns - final text only, not the intermediate
+    tool-call/tool-result blocks. That's intentionally lossy: the model
+    needs conversational context ("what about just dining?"), not a replay
+    of exactly which tools it called last time.
+
+    Returns (reply_text, updated_history) - the caller is responsible for
+    persisting updated_history for the next call.
     """
     client = _get_client()
-    messages = [{"role": "user", "content": user_message}]
+    history = history or []
+
+    # Working message list for THIS turn's tool-calling loop: prior turns
+    # (plain text) plus the new user message.
+    messages = [dict(m) for m in history] + [{"role": "user", "content": user_message}]
 
     for _ in range(MAX_TOOL_ITERATIONS):
         response = client.messages.create(
@@ -67,12 +81,22 @@ def run_agent(db: Session, user_message: str) -> str:
         )
 
         if response.stop_reason != "tool_use":
-            # Claude gave a final answer - collect any text blocks and return.
             text_parts = [block.text for block in response.content if block.type == "text"]
-            return "\n".join(text_parts).strip()
+            reply = "\n".join(text_parts).strip()
 
-        # Claude wants to call one or more tools. Append its request,
-        # execute each tool, and append the results as a new message.
+            updated_history = history + [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": reply},
+            ]
+            # Trim from the oldest turns if we've grown past the cap.
+            if len(updated_history) > MAX_HISTORY_TURNS * 2:
+                updated_history = updated_history[-MAX_HISTORY_TURNS * 2 :]
+
+            return reply, updated_history
+
+        # Claude wants to call one or more tools - execute them and
+        # continue the loop. These intermediate blocks live only in
+        # `messages` for this turn; they are NOT saved into history.
         messages.append({"role": "assistant", "content": response.content})
 
         tool_results = []
@@ -90,4 +114,8 @@ def run_agent(db: Session, user_message: str) -> str:
 
         messages.append({"role": "user", "content": tool_results})
 
-    return "I wasn't able to work out an answer within the tool-call limit - try rephrasing the question."
+    fallback = "I wasn't able to work out an answer within the tool-call limit - try rephrasing the question."
+    return fallback, history + [
+        {"role": "user", "content": user_message},
+        {"role": "assistant", "content": fallback},
+    ]

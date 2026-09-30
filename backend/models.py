@@ -7,7 +7,7 @@ SQLite store instead of hitting the Plaid API on every chat message.
 import os
 from datetime import datetime
 
-from sqlalchemy import create_engine, Column, String, Float, DateTime, Boolean
+from sqlalchemy import create_engine, Column, String, Float, DateTime, Boolean, Integer, Text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./finance_agent.db")
@@ -41,6 +41,27 @@ class Transaction(Base):
     amount = Column(Float, nullable=False)  # positive = money out, per Plaid convention
     category = Column(String, nullable=True)  # Plaid's top-level category
     pending = Column(Boolean, default=False)
+
+
+class ChatMessage(Base):
+    """One turn of the agent conversation, persisted so history survives restarts."""
+
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    role = Column(String, nullable=False)  # "user" | "assistant"
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Budget(Base):
+    """A user-set monthly budget for a spending category. One row per category."""
+
+    __tablename__ = "budgets"
+
+    category = Column(String, primary_key=True)
+    monthly_amount = Column(Float, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 def init_db():
