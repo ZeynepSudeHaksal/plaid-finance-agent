@@ -1,0 +1,2 @@
+# Test-only dependencies (CI installs these alongside requirements.txt)
+pytest==8.3.3

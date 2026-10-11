@@ -1,0 +1,47 @@
+# Render Blueprint: API (Python web service) + frontend (static site).
+# Postgres is NOT created here - use a Neon free database and paste its
+# connection string into DATABASE_URL (Render's free Postgres expires after 30 days).
+services:
+  - type: web
+    name: finance-agent-api
+    runtime: python
+    rootDir: backend
+    plan: free            # switch to "starter" ($7/mo) to avoid the 15-minute cold start
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: PLAID_ENV
+        value: sandbox
+      - key: PLAID_CLIENT_ID
+        sync: false
+      - key: PLAID_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false       # set to the static site URL, e.g. https://finance-agent-web.onrender.com
+      - key: CHAT_DAILY_LIMIT_USER
+        value: "30"
+      - key: CHAT_DAILY_LIMIT_DEMO
+        value: "10"
+      - key: CHAT_DAILY_LIMIT_GLOBAL
+        value: "300"
+
+  - type: web
+    name: finance-agent-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE
+        sync: false       # set to the API URL, e.g. https://finance-agent-api.onrender.com

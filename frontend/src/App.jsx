@@ -14,6 +14,7 @@ export default function App() {
   const [authed, setAuthed] = useState(!!getAuthToken());
   const [email, setEmail] = useState(localStorage.getItem(EMAIL_KEY) || "");
   const [linked, setLinked] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
   const [checkingLink, setCheckingLink] = useState(true);
 
   // If the backend ever rejects our token (expired, server restarted with a
@@ -36,7 +37,10 @@ export default function App() {
     setCheckingLink(true);
     api
       .getLinkStatus()
-      .then((res) => setLinked(!!res.linked))
+      .then((res) => {
+        setLinked(!!res.linked);
+        setIsDemo(!!res.is_demo);
+      })
       .catch(() => setLinked(false))
       .finally(() => setCheckingLink(false));
   }, [authed]);
@@ -53,6 +57,7 @@ export default function App() {
     localStorage.removeItem(EMAIL_KEY);
     setAuthed(false);
     setLinked(false);
+    setIsDemo(false);
   };
 
   if (!authed) {
@@ -73,7 +78,8 @@ export default function App() {
         <h1>Finance Agent</h1>
         <div className="masthead-right">
           <span className="tag">
-            {linked ? "sandbox · connected" : "sandbox mode"} · {email}
+            {isDemo ? "demo account" : linked ? "sandbox · connected" : "sandbox mode"}
+            {!isDemo && ` · ${email}`}
           </span>
           <button className="ghost-button" onClick={handleLogout}>
             log out
@@ -87,6 +93,13 @@ export default function App() {
         <ConnectBank onLinked={() => setLinked(true)} />
       ) : (
         <main className="dashboard">
+          {isDemo && (
+            <p className="demo-banner">
+              You're exploring a demo account with sample data (kept for 24 hours). Chat is limited
+              to a few messages. <button className="ghost-button" onClick={handleLogout}>Create a real account</button> to
+              connect a Plaid sandbox bank.
+            </p>
+          )}
           <AlertsBanner />
           <TransactionList />
           <SpendingCharts />

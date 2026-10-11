@@ -8,6 +8,19 @@ export default function AuthScreen({ onAuth }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  const tryDemo = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { access_token, email: demoEmail } = await api.startDemo();
+      onAuth(access_token, demoEmail);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
@@ -25,6 +38,16 @@ export default function AuthScreen({ onAuth }) {
 
   return (
     <div className="connect-bank">
+      <div className="demo-callout">
+        <p>
+          <strong>Just looking?</strong> Open a ready-made demo account with three months of sample
+          transactions. No sign-up, no bank connection.
+        </p>
+        <button type="button" onClick={tryDemo} disabled={busy}>
+          {busy ? "Please wait…" : "Try the demo"}
+        </button>
+      </div>
+
       <h2>{mode === "login" ? "Sign in" : "Create an account"}</h2>
       <p className="hint">
         {mode === "login"

@@ -3,6 +3,14 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "../api";
 
+const SAMPLE_QUESTIONS = [
+  "How much did I spend on food last month?",
+  "Anything unusual in my spending?",
+  "Am I on track with my budgets this month?",
+  "Compare this month to last month",
+  "Forecast my spending for next month",
+];
+
 export default function Chat() {
   const [messages, setMessages] = useState([
     {
@@ -12,6 +20,7 @@ export default function Chat() {
   ]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [remaining, setRemaining] = useState(null);
 
   const startNewConversation = async () => {
     try {
@@ -29,8 +38,8 @@ export default function Chat() {
     ]);
   };
 
-  const sendMessage = async () => {
-    const text = input.trim();
+  const sendMessage = async (override) => {
+    const text = (typeof override === "string" ? override : input).trim();
     if (!text || sending) return;
 
     setMessages((prev) => [...prev, { role: "user", text }]);
@@ -38,7 +47,8 @@ export default function Chat() {
     setSending(true);
 
     try {
-      const { reply } = await api.sendChatMessage(text);
+      const { reply, remaining_today } = await api.sendChatMessage(text);
+      if (typeof remaining_today === "number") setRemaining(remaining_today);
       setMessages((prev) => [...prev, { role: "assistant", text: reply }]);
     } catch (e) {
       setMessages((prev) => [
@@ -70,6 +80,15 @@ export default function Chat() {
         ))}
         {sending && <div className="chat-bubble assistant hint">Thinking…</div>}
       </div>
+      {messages.length === 1 && (
+        <div className="chat-suggestions">
+          {SAMPLE_QUESTIONS.map((q) => (
+            <button key={q} type="button" className="chip" onClick={() => sendMessage(q)} disabled={sending}>
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="chat-input-row">
         <input
           value={input}
@@ -78,10 +97,13 @@ export default function Chat() {
           placeholder="Ask a question about your finances…"
           disabled={sending}
         />
-        <button onClick={sendMessage} disabled={sending || !input.trim()}>
+        <button onClick={() => sendMessage()} disabled={sending || !input.trim()}>
           Send
         </button>
       </div>
+      {remaining !== null && (
+        <p className="hint chat-quota">{remaining} message{remaining === 1 ? "" : "s"} left today</p>
+      )}
     </section>
   );
 }

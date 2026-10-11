@@ -24,7 +24,9 @@ async function request(path, options = {}) {
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
-  if (res.status === 401) {
+  // A 401 while holding a token means the session died; a 401 on the login
+  // form just means a wrong password, which the form shows itself.
+  if (res.status === 401 && authToken) {
     setAuthToken(null);
     if (onUnauthorized) onUnauthorized();
     throw new Error("Session expired — please sign in again.");
@@ -32,7 +34,14 @@ async function request(path, options = {}) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`${path} failed (${res.status}): ${text}`);
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed.detail === "string") detail = parsed.detail;
+    } catch {
+      // not JSON - keep the raw text
+    }
+    throw new Error(detail || `${path} failed (${res.status})`);
   }
   return res.json();
 }
@@ -43,6 +52,8 @@ export const api = {
 
   login: (email, password) =>
     request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+
+  startDemo: () => request("/auth/demo", { method: "POST" }),
 
   getLinkStatus: () => request("/link/status"),
 

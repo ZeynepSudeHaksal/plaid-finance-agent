@@ -26,26 +26,45 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from models import init_db, get_db, User, PlaidItem, Transaction, ChatMessage, Budget
+import limits
+from seed import create_demo_user
 import plaid_client
 import agent
 from agent_tools import categorize_spending, calculate_budget_status, detect_anomalies
 from auth import hash_password, verify_password, create_token, get_current_user
+from crypto import encrypt_token
+from sync_service import sync_item
 
 load_dotenv()
 
 app = FastAPI(title="Finance Agent API")
 
+def _cors_origins() -> list:
+    """Allowed browser origins, from CORS_ORIGINS (comma-separated). Defaults to local dev."""
+    raw = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+    return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+
+
 app.add_middleware(
     CORSMiddleware,
-    # Wide open for local development only — tighten this before any real deployment.
-    allow_origins=["*"],
+    allow_origins=_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+REQUIRED_SETTINGS = ("JWT_SECRET", "ENCRYPTION_KEY")
+
+
 @app.on_event("startup")
 def on_startup():
+    # Fail fast with a readable message instead of erroring on the first request.
+    missing = [name for name in REQUIRED_SETTINGS if not os.getenv(name)]
+    if missing:
+        raise RuntimeError(
+            f"Missing required setting(s) in backend/.env: {', '.join(missing)}. "
+            "See .env.example for how to generate each one."
+        )
     init_db()
 
 
@@ -106,7 +125,7 @@ def health():
 
 # --- Auth (public) ------------------------------------------------------------
 
-@app.post("/auth/signup")
+@app.post("/auth/signup", dependencies=[Depends(limits.auth_rate_limit)])
 def signup(req: SignupRequest, db: Session = Depends(get_db)):
     if len(req.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
@@ -124,7 +143,7 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
     return {"access_token": token, "email": user.email}
 
 
-@app.post("/auth/login")
+@app.post("/auth/login", dependencies=[Depends(limits.auth_rate_limit)])
 def login(req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == req.email).first()
     if not user or not verify_password(req.password, user.password_hash):
@@ -134,17 +153,35 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
     return {"access_token": token, "email": user.email}
 
 
+@app.post("/auth/demo", dependencies=[Depends(limits.demo_rate_limit)])
+def start_demo(db: Session = Depends(get_db)):
+    """One-click demo: a throwaway account pre-loaded with sample transactions and budgets (no Plaid)."""
+    user = create_demo_user(db)
+    return {"access_token": create_token(user.id), "email": user.email, "is_demo": True}
+
+
 # --- Plaid linking (authenticated) --------------------------------------------
 
 @app.get("/link/status")
 def link_status(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Lets the frontend know on load whether this user already has a linked bank."""
+    if current_user.is_demo:
+        return {"linked": True, "is_demo": True}  # demo accounts come with seeded data, no bank needed
     exists = db.query(PlaidItem).filter(PlaidItem.user_id == current_user.id).first() is not None
-    return {"linked": exists}
+    return {"linked": exists, "is_demo": False}
+
+
+DEMO_BLOCKED = "Bank linking is turned off in the demo. Create a free account to connect a Plaid sandbox bank."
+
+
+def _block_demo(user: User):
+    if user.is_demo:
+        raise HTTPException(status_code=403, detail=DEMO_BLOCKED)
 
 
 @app.post("/link/token")
 def get_link_token(current_user: User = Depends(get_current_user)):
+    _block_demo(current_user)
     try:
         link_token = plaid_client.create_link_token(str(current_user.id))
         return {"link_token": link_token}
@@ -154,15 +191,21 @@ def get_link_token(current_user: User = Depends(get_current_user)):
 
 @app.post("/link/exchange")
 def exchange_token(req: ExchangeRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _block_demo(current_user)
     try:
         result = plaid_client.exchange_public_token(req.public_token)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    try:
+        encrypted_token = encrypt_token(result["access_token"])
+    except RuntimeError as e:  # missing or invalid ENCRYPTION_KEY
+        raise HTTPException(status_code=500, detail=str(e))
+
     item = PlaidItem(
         item_id=result["item_id"],
         user_id=current_user.id,
-        access_token=result["access_token"],
+        access_token=encrypted_token,
         institution_name=req.institution_name,
     )
     db.merge(item)
@@ -173,45 +216,28 @@ def exchange_token(req: ExchangeRequest, current_user: User = Depends(get_curren
 
 @app.post("/transactions/sync")
 def sync_all_transactions(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Pull the latest transactions for this user's linked items only."""
+    """Pull new/changed transactions for this user's linked items (incremental, from the saved cursor)."""
+    _block_demo(current_user)
     items = db.query(PlaidItem).filter(PlaidItem.user_id == current_user.id).all()
     if not items:
         raise HTTPException(status_code=400, detail="No linked accounts yet. Call /link/token and /link/exchange first.")
 
-    total_added = 0
+    totals = {"added": 0, "modified": 0, "removed": 0}
     for item in items:
-        cursor = None
-        has_more = True
-        while has_more:
-            result = plaid_client.sync_transactions(item.access_token, cursor)
+        try:
+            counts = sync_item(db, item)
+        except RuntimeError as e:
+            # e.g. missing/changed ENCRYPTION_KEY - tell the user plainly
+            raise HTTPException(status_code=500, detail=str(e))
+        for key in totals:
+            totals[key] += counts[key]
 
-            for txn in result["added"]:
-                db.merge(
-                    Transaction(
-                        transaction_id=txn.transaction_id,
-                        item_id=item.item_id,
-                        user_id=current_user.id,
-                        account_id=txn.account_id,
-                        date=str(txn.date),
-                        name=txn.name,
-                        amount=txn.amount,
-                        category=txn.personal_finance_category.primary if txn.personal_finance_category else None,
-                        pending=txn.pending,
-                    )
-                )
-                total_added += 1
-
-            for txn in result["removed"]:
-                existing = db.query(Transaction).filter_by(transaction_id=txn.transaction_id).first()
-                if existing:
-                    db.delete(existing)
-
-            cursor = result["next_cursor"]
-            has_more = result["has_more"]
-
-        db.commit()
-
-    return {"synced_items": len(items), "transactions_added": total_added}
+    return {
+        "synced_items": len(items),
+        "transactions_added": totals["added"],
+        "transactions_modified": totals["modified"],
+        "transactions_removed": totals["removed"],
+    }
 
 
 @app.get("/transactions")
@@ -241,20 +267,20 @@ def list_categories(current_user: User = Depends(get_current_user), db: Session 
 
 @app.post("/chat")
 def chat(req: ChatRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if not req.message.strip():
-        raise HTTPException(status_code=400, detail="message cannot be empty")
+    message = limits.validate_message(req.message)
+    remaining = limits.consume_chat_quota(db, current_user)
 
     history = _load_history(db, current_user.id)
 
     try:
-        reply, _ = agent.run_agent(db, req.message, current_user.id, history)
+        reply, _ = agent.run_agent(db, message, current_user.id, history)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent error: {e}")
 
-    _save_turn(db, current_user.id, req.message, reply)
-    return {"reply": reply}
+    _save_turn(db, current_user.id, message, reply)
+    return {"reply": reply, "remaining_today": remaining}
 
 
 @app.post("/chat/reset")

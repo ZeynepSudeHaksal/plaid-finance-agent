@@ -9,3 +9,5 @@ pydantic==2.9.2
 pydantic[email]==2.9.2
 PyJWT==2.9.0
 bcrypt==4.2.0
+cryptography==43.0.3
+psycopg2-binary==2.9.9
