@@ -8,14 +8,28 @@ Every function takes `user_id` and filters by it - this is NOT part of
 the tool's LLM-facing schema (the model never sees or chooses it); the
 agent loop injects it automatically so one user's data is never visible
 to another's conversation.
+
+ONE EXCEPTION: get_market_outlook doesn't touch the database at all -
+it calls a second, separately-deployed project of mine (a volatility
+regime + price direction ML service: github.com/ZeynepSudeHaksal/
+spy-volatility-predictor) over HTTP instead. db/user_id are still
+accepted, purely so it fits _execute_tool's uniform dispatch signature
+(agent.py always calls every tool as fn(db=db, user_id=user_id,
+**tool_input)) - it doesn't use either.
 """
+import os
 from collections import defaultdict
 from datetime import datetime
 from statistics import mean, stdev
 
+import httpx
 from sqlalchemy.orm import Session
 
 from models import Transaction, Budget
+
+MARKET_API_BASE = os.getenv(
+    "MARKET_API_BASE", "https://financial-predictor-api.onrender.com/api"
+)
 
 
 def get_transactions(db: Session, user_id: int, start_date: str = None, end_date: str = None, category: str = None) -> dict:
@@ -200,6 +214,59 @@ def compare_periods(db: Session, user_id: int, period_a_start: str, period_a_end
     }
 
 
+def get_market_outlook(db: Session, user_id: int, ticker: str = "SPY") -> dict:
+    """
+    Fetches the current volatility-regime and price-direction outlook for
+    a major index/sector ETF from a separately-deployed ML service (see
+    module docstring). General market context, not derived from this
+    user's own transactions at all.
+
+    Deliberately honest about which half of that is trustworthy: the
+    volatility model has a real, walk-forward-validated edge (ROC-AUC
+    0.59-0.66 across tickers); the direction model, at this horizon,
+    does not (ROC-AUC ~0.51, indistinguishable from random). The "note"
+    field says so explicitly, and the system prompt tells the agent to
+    pass that caveat on rather than quietly presenting a coin-flip as a
+    forecast.
+    """
+    ticker = ticker.upper()
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            vol = client.get(
+                f"{MARKET_API_BASE}/volatility/predict/latest", params={"ticker": ticker}
+            ).json()
+            direction = client.get(
+                f"{MARKET_API_BASE}/direction/predict/latest", params={"ticker": ticker}
+            ).json()
+    except httpx.HTTPError as e:
+        return {"error": f"Market Analytics API unreachable: {e}"}
+
+    return {
+        "ticker": ticker,
+        "volatility_regime": {
+            "expected": vol.get("regime"),
+            "probability": vol.get("probability"),
+            "as_of": vol.get("date"),
+        },
+        "price_direction_5d": {
+            "expected": direction.get("direction"),
+            "probability": direction.get("probability"),
+            "always_up_baseline": direction.get("always_up_baseline"),
+            "as_of": direction.get("date"),
+        },
+        "source": "spy-volatility-predictor (separately-deployed XGBoost models, "
+        "walk-forward backtested)",
+        "note": (
+            "Volatility regime has a validated edge over its naive baseline "
+            "(ROC-AUC 0.59-0.66, consistent across tickers) and is reasonable to "
+            "mention as a risk signal. Price direction at a 5-day horizon does "
+            "NOT have a validated edge (ROC-AUC ~0.51, statistically indistinguishable "
+            "from random) -- present it only as informational, never as a reason "
+            "to change spending or investing behavior."
+        ),
+    }
+
+
 # --- Tool schemas for the LLM (Anthropic tool-use format) ---
 # These describe only the arguments the MODEL supplies - user_id is
 # never part of this schema; the agent loop injects it separately so
@@ -280,6 +347,26 @@ TOOL_SCHEMAS = [
             "required": ["period_a_start", "period_a_end", "period_b_start", "period_b_end"],
         },
     },
+    {
+        "name": "get_market_outlook",
+        "description": "Get the current broad-market outlook (volatility regime and short-term "
+        "price direction) for a major index/sector ETF, from a separately-deployed ML "
+        "forecasting service. NOT derived from the user's own transactions -- use this "
+        "when they ask about market conditions, volatility, or whether it's a good/bad "
+        "time to spend or invest. The result's 'note' field says which half of this is "
+        "statistically validated and which isn't -- always pass that caveat on to the "
+        "user rather than presenting the direction figure as reliable advice.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticker": {
+                    "type": "string",
+                    "description": "Ticker symbol: SPY, QQQ, IWM, DIA, or XLF. Defaults to SPY "
+                    "(broad market) if omitted.",
+                },
+            },
+        },
+    },
 ]
 
 # Maps tool name -> actual Python function, so the agent loop can
@@ -292,4 +379,5 @@ TOOL_FUNCTIONS = {
     "get_budgets": get_budgets,
     "forecast_next_month": forecast_next_month,
     "compare_periods": compare_periods,
+    "get_market_outlook": get_market_outlook,
 }

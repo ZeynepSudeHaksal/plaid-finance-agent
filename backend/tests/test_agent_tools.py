@@ -1,3 +1,5 @@
+import httpx
+
 from agent_tools import (
     calculate_budget_status,
     categorize_spending,
@@ -5,6 +7,7 @@ from agent_tools import (
     detect_anomalies,
     forecast_next_month,
     get_budgets,
+    get_market_outlook,
     get_transactions,
 )
 from models import Budget
@@ -176,6 +179,90 @@ def test_forecast_with_no_data(db, make_user):
     user = make_user()
 
     assert forecast_next_month(db, user.id)["forecast"] is None
+
+
+# --- get_market_outlook (the one tool that doesn't touch the DB) -----------
+
+class _FakeResponse:
+    def __init__(self, data):
+        self._data = data
+
+    def json(self):
+        return self._data
+
+
+class _FakeMarketAPI:
+    """Stands in for httpx.Client so tests never make a real network call."""
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def get(self, url, params=None):
+        if "/volatility/" in url:
+            return _FakeResponse(
+                {"regime": "high", "probability": 0.79, "date": "2026-09-16"}
+            )
+        return _FakeResponse(
+            {
+                "direction": "down",
+                "probability": 0.62,
+                "always_up_baseline": 0.60,
+                "date": "2026-10-09",
+            }
+        )
+
+
+def test_get_market_outlook_shapes_both_models_response(db, make_user, monkeypatch):
+    user = make_user()
+    monkeypatch.setattr("agent_tools.httpx.Client", _FakeMarketAPI)
+
+    result = get_market_outlook(db, user.id, ticker="spy")  # lowercase in -> uppercase out
+
+    assert result["ticker"] == "SPY"
+    assert result["volatility_regime"]["expected"] == "high"
+    assert result["volatility_regime"]["probability"] == 0.79
+    assert result["price_direction_5d"]["expected"] == "down"
+    assert result["price_direction_5d"]["always_up_baseline"] == 0.60
+    # The honesty caveat must actually be present, not just planned in a comment.
+    assert "ROC-AUC ~0.51" in result["note"]
+    assert "0.59-0.66" in result["note"]
+
+
+def test_get_market_outlook_defaults_to_spy(db, make_user, monkeypatch):
+    user = make_user()
+    monkeypatch.setattr("agent_tools.httpx.Client", _FakeMarketAPI)
+
+    result = get_market_outlook(db, user.id)
+
+    assert result["ticker"] == "SPY"
+
+
+def test_get_market_outlook_handles_unreachable_api(db, make_user, monkeypatch):
+    class _BrokenAPI:
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, *a, **kw):
+            raise httpx.ConnectError("connection refused")
+
+    user = make_user()
+    monkeypatch.setattr("agent_tools.httpx.Client", _BrokenAPI)
+
+    result = get_market_outlook(db, user.id)
+
+    assert "error" in result
 
 
 # --- isolation: one user's data never leaks into another's tool results -----

@@ -35,6 +35,12 @@ services:
         value: "10"
       - key: CHAT_DAILY_LIMIT_GLOBAL
         value: "300"
+      - key: MARKET_API_BASE
+        value: https://financial-predictor-api.onrender.com/api
+        # points get_market_outlook (agent_tools.py) at the deployed
+        # spy-volatility-predictor API -- github.com/ZeynepSudeHaksal/
+        # spy-volatility-predictor. Defaults to this value in code too,
+        # so this line is just making the wiring explicit/overridable.
 
   - type: web
     name: finance-agent-web
