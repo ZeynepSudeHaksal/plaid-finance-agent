@@ -241,6 +241,19 @@ def get_market_outlook(db: Session, user_id: int, ticker: str = "SPY") -> dict:
     except httpx.HTTPError as e:
         return {"error": f"Market Analytics API unreachable: {e}"}
 
+    # The basket this points at can change independently of this repo (it's
+    # a separately-deployed project) -- so this never hardcodes which
+    # tickers are supported. An unrecognized ticker comes back from the
+    # API with regime/direction/probability all null and a non-null
+    # "note" explaining why (see spy-volatility-predictor's app.py).
+    # Surface that plainly instead of silently returning an "outlook"
+    # that's actually all nulls, which would read to the LLM like "no
+    # volatility today" rather than "this ticker isn't tracked."
+    if vol.get("regime") is None and vol.get("note"):
+        return {"ticker": ticker, "error": vol["note"]}
+    if direction.get("direction") is None and direction.get("note"):
+        return {"ticker": ticker, "error": direction["note"]}
+
     return {
         "ticker": ticker,
         "volatility_regime": {
@@ -361,8 +374,12 @@ TOOL_SCHEMAS = [
             "properties": {
                 "ticker": {
                     "type": "string",
-                    "description": "Ticker symbol: SPY, QQQ, IWM, DIA, or XLF. Defaults to SPY "
-                    "(broad market) if omitted.",
+                    "description": "Ticker symbol, e.g. SPY, QQQ, IWM, DIA, XLF, GLD, or TLT. "
+                    "Defaults to SPY (broad market) if omitted. This list isn't exhaustive and "
+                    "can change, since the market API is a separately-deployed, independently "
+                    "evolving project -- if a ticker isn't tracked, the tool result's 'error' "
+                    "field will say so plainly; don't refuse to try a ticker just because it's "
+                    "not in this example list.",
                 },
             },
         },
