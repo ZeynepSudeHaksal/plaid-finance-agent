@@ -72,8 +72,7 @@ export default function BudgetPanel({ monthRange }) {
       </h3>
       {!monthRange.isCurrentMonth && (
         <p className="hint">
-          Showing your current budgets against {monthRange.label}'s actual spending, for
-          comparison — budgets themselves aren't set retroactively.
+          Showing your budgets against {monthRange.label}'s actual spending, for comparison.
         </p>
       )}
 
@@ -112,28 +111,26 @@ export default function BudgetPanel({ monthRange }) {
 
       {error && <p className="error">Error: {error}</p>}
 
-      {monthRange.isCurrentMonth && (
-        <form className="budget-form" onSubmit={handleSubmit}>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={saving}>
-            <option value="">Choose a category…</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {formatCategoryLabel(c)}
-              </option>
-            ))}
-          </select>
-          <input
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="Monthly $"
-            inputMode="decimal"
-            disabled={saving}
-          />
-          <button type="submit" disabled={saving || !category || !amount}>
-            {saving ? "Saving…" : "Set budget"}
-          </button>
-        </form>
-      )}
+      <form className="budget-form" onSubmit={handleSubmit}>
+        <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={saving}>
+          <option value="">Choose a category…</option>
+          {categories.map((c) => (
+            <option key={c} value={c}>
+              {formatCategoryLabel(c)}
+            </option>
+          ))}
+        </select>
+        <input
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="Monthly $"
+          inputMode="decimal"
+          disabled={saving}
+        />
+        <button type="submit" disabled={saving || !category || !amount}>
+          {saving ? "Saving…" : "Set budget"}
+        </button>
+      </form>
     </section>
   );
 }
