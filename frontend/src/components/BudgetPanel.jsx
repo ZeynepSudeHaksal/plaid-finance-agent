@@ -2,14 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { formatCategoryLabel } from "../format";
 
-function currentMonthRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const iso = (d) => d.toISOString().slice(0, 10);
-  return { start: iso(start), end: iso(now) };
-}
-
-export default function BudgetPanel() {
+export default function BudgetPanel({ monthRange }) {
   const [budgets, setBudgets] = useState([]);
   const [spending, setSpending] = useState({});
   const [categories, setCategories] = useState([]);
@@ -24,10 +17,9 @@ export default function BudgetPanel() {
     setLoading(true);
     setError(null);
     try {
-      const { start, end } = currentMonthRange();
       const [budgetList, spendingSummary, categoryList] = await Promise.all([
         api.getBudgets(),
-        api.spendingByCategory(start, end),
+        api.spendingByCategory(monthRange.start, monthRange.end),
         api.getCategories(),
       ]);
       setBudgets(budgetList);
@@ -42,7 +34,8 @@ export default function BudgetPanel() {
 
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthRange.start, monthRange.end]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -74,7 +67,15 @@ export default function BudgetPanel() {
 
   return (
     <section className="budget-panel">
-      <h3>Budgets this month</h3>
+      <h3>
+        {monthRange.isCurrentMonth ? "Budgets this month" : `Budgets vs. ${monthRange.label}`}
+      </h3>
+      {!monthRange.isCurrentMonth && (
+        <p className="hint">
+          Showing your current budgets against {monthRange.label}'s actual spending, for
+          comparison — budgets themselves aren't set retroactively.
+        </p>
+      )}
 
       {loading ? (
         <p className="hint">Loading budgets…</p>
@@ -111,26 +112,28 @@ export default function BudgetPanel() {
 
       {error && <p className="error">Error: {error}</p>}
 
-      <form className="budget-form" onSubmit={handleSubmit}>
-        <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={saving}>
-          <option value="">Choose a category…</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {formatCategoryLabel(c)}
-            </option>
-          ))}
-        </select>
-        <input
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="Monthly $"
-          inputMode="decimal"
-          disabled={saving}
-        />
-        <button type="submit" disabled={saving || !category || !amount}>
-          {saving ? "Saving…" : "Set budget"}
-        </button>
-      </form>
+      {monthRange.isCurrentMonth && (
+        <form className="budget-form" onSubmit={handleSubmit}>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={saving}>
+            <option value="">Choose a category…</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>
+                {formatCategoryLabel(c)}
+              </option>
+            ))}
+          </select>
+          <input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="Monthly $"
+            inputMode="decimal"
+            disabled={saving}
+          />
+          <button type="submit" disabled={saving || !category || !amount}>
+            {saving ? "Saving…" : "Set budget"}
+          </button>
+        </form>
+      )}
     </section>
   );
 }

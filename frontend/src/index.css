@@ -541,3 +541,108 @@ button:disabled {
 @media (max-width: 600px) {
   .demo-callout { flex-direction: column; align-items: stretch; }
 }
+
+/* --- Month picker ---------------------------------------------------*/
+
+.month-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -8px 0 20px;
+}
+
+.month-picker-label {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-soft);
+  min-width: 11ch;
+  text-align: center;
+}
+
+.month-picker-arrow {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  line-height: 1;
+  font-size: 15px;
+  border-radius: 3px;
+}
+
+.month-picker-arrow:hover:not(:disabled) {
+  background: var(--paper-raised);
+  border-color: var(--ink-faint);
+}
+
+.month-picker-arrow:disabled {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--line-strong);
+  cursor: not-allowed;
+}
+
+/* --- Category legend (ties the chart's colors to the ledger's) ------*/
+
+.category-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 10px;
+}
+
+.category-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.category-legend .swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* --- Ledger filters ---------------------------------------------------*/
+
+.ledger-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.ledger-search {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 3px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper-raised);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.ledger-filters select {
+  padding: 8px 10px;
+  border-radius: 3px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper-raised);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.ledger-search:focus,
+.ledger-filters select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.load-more {
+  display: block;
+  margin: 14px auto 0;
+}

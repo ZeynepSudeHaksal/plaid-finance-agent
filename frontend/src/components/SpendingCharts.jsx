@@ -3,6 +3,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -12,13 +13,7 @@ import {
 } from "recharts";
 import { api } from "../api";
 import { formatCategoryLabel } from "../format";
-
-function currentMonthRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const iso = (d) => d.toISOString().slice(0, 10);
-  return { start: iso(start), end: iso(now) };
-}
+import { colorForCategory } from "../categoryColors";
 
 function formatMonthLabel(period) {
   // "2026-08" -> "Aug"
@@ -49,18 +44,26 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-export default function SpendingCharts() {
+export default function SpendingCharts({ monthRange }) {
   const [byCategory, setByCategory] = useState([]);
   const [trend, setTrend] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const { start, end } = currentMonthRange();
-    Promise.all([api.spendingByCategory(start, end), api.spendingTimeseries()])
+    setLoading(true);
+    Promise.all([
+      api.spendingByCategory(monthRange.start, monthRange.end),
+      api.spendingTimeseries(),
+    ])
       .then(([categorySummary, timeseries]) => {
         const rows = Object.entries(categorySummary.by_category || {})
-          .map(([category, total]) => ({ label: formatCategoryLabel(category), total }))
+          .map(([category, total]) => ({
+            category,
+            label: formatCategoryLabel(category),
+            total,
+            color: colorForCategory(category),
+          }))
           .sort((a, b) => b.total - a.total)
           .slice(0, 8);
         setByCategory(rows);
@@ -69,33 +72,47 @@ export default function SpendingCharts() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [monthRange.start, monthRange.end]);
 
   if (loading) return <p className="hint">Loading charts…</p>;
   if (error) return <p className="error">Error: {error}</p>;
 
   return (
     <section className="spending-charts">
-      <h3>This month by category</h3>
+      <h3>By category, {monthRange.label}</h3>
       {byCategory.length === 0 ? (
-        <p className="hint">No spending this month yet.</p>
+        <p className="hint">No spending in {monthRange.label}.</p>
       ) : (
-        <ResponsiveContainer width="100%" height={Math.max(120, byCategory.length * 34)}>
-          <BarChart data={byCategory} layout="vertical" margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
-            <CartesianGrid horizontal={false} stroke={LINE} />
-            <XAxis type="number" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono", fill: "#8a8f85" }} axisLine={{ stroke: LINE }} tickLine={false} />
-            <YAxis
-              type="category"
-              dataKey="label"
-              width={140}
-              tick={{ fontSize: 12.5, fontFamily: "Inter", fill: INK }}
-              axisLine={{ stroke: LINE }}
-              tickLine={false}
-            />
-            <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(15,82,87,0.06)" }} />
-            <Bar dataKey="total" fill={ACCENT} radius={[0, 2, 2, 0]} barSize={16} />
-          </BarChart>
-        </ResponsiveContainer>
+        <>
+          <ResponsiveContainer width="100%" height={Math.max(120, byCategory.length * 34)}>
+            <BarChart data={byCategory} layout="vertical" margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
+              <CartesianGrid horizontal={false} stroke={LINE} />
+              <XAxis type="number" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono", fill: "#8a8f85" }} axisLine={{ stroke: LINE }} tickLine={false} />
+              <YAxis
+                type="category"
+                dataKey="label"
+                width={140}
+                tick={{ fontSize: 12.5, fontFamily: "Inter", fill: INK }}
+                axisLine={{ stroke: LINE }}
+                tickLine={false}
+              />
+              <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(15,82,87,0.06)" }} />
+              <Bar dataKey="total" radius={[0, 2, 2, 0]} barSize={16}>
+                {byCategory.map((row) => (
+                  <Cell key={row.category} fill={row.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          <div className="category-legend">
+            {byCategory.map((row) => (
+              <span key={row.category} className="category-legend-item">
+                <span className="swatch" style={{ background: row.color }} />
+                {row.label}
+              </span>
+            ))}
+          </div>
+        </>
       )}
 
       <h3 style={{ marginTop: 28 }}>Monthly trend</h3>

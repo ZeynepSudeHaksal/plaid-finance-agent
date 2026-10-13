@@ -7,10 +7,12 @@ import TransactionList from "./components/TransactionList.jsx";
 import SpendingCharts from "./components/SpendingCharts.jsx";
 import BudgetPanel from "./components/BudgetPanel.jsx";
 import Chat from "./components/Chat.jsx";
+import MonthPicker, { useMonthRange } from "./components/MonthPicker.jsx";
 
 const EMAIL_KEY = "finance_agent_email";
 
 export default function App() {
+  const monthRange = useMonthRange();
   const [authed, setAuthed] = useState(!!getAuthToken());
   const [email, setEmail] = useState(localStorage.getItem(EMAIL_KEY) || "");
   const [linked, setLinked] = useState(false);
@@ -102,8 +104,9 @@ export default function App() {
           )}
           <AlertsBanner />
           <TransactionList />
-          <SpendingCharts />
-          <BudgetPanel />
+          <MonthPicker range={monthRange} />
+          <SpendingCharts monthRange={monthRange} />
+          <BudgetPanel monthRange={monthRange} />
           <Chat />
         </main>
       )}
