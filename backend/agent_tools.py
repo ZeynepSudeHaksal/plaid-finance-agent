@@ -231,13 +231,29 @@ def get_market_outlook(db: Session, user_id: int, ticker: str = "SPY") -> dict:
     """
     ticker = ticker.upper()
     try:
-        with httpx.Client(timeout=10.0) as client:
+        # Generous timeout on purpose: this calls a separately-deployed
+        # Render free-tier service, which spins down after ~15 minutes of
+        # inactivity and can take 15-25s to cold-start on the next request.
+        # A short timeout here would misfire on an ordinary cold start, not
+        # just on a genuine outage.
+        with httpx.Client(timeout=30.0) as client:
             vol = client.get(
                 f"{MARKET_API_BASE}/volatility/predict/latest", params={"ticker": ticker}
             ).json()
             direction = client.get(
                 f"{MARKET_API_BASE}/direction/predict/latest", params={"ticker": ticker}
             ).json()
+    except httpx.TimeoutException:
+        # Deliberately a different message from the "ticker not tracked"
+        # case below: this is almost always the market API's Render
+        # instance waking up from being idle, not a real limitation. Telling
+        # the LLM (and through it, the user) to retry is the honest answer,
+        # not "this ticker isn't supported."
+        return {
+            "error": "The market data service is waking up from being idle "
+            "(it spins down after inactivity) and didn't respond in time. "
+            "This is temporary -- ask again in about 20-30 seconds."
+        }
     except httpx.HTTPError as e:
         return {"error": f"Market Analytics API unreachable: {e}"}
 
