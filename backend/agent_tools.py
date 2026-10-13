@@ -157,6 +157,22 @@ def get_budgets(db: Session, user_id: int) -> dict:
     }
 
 
+def set_budget(db: Session, user_id: int, category: str, monthly_amount: float) -> dict:
+    """
+    Create or update a monthly budget for a category - same upsert the
+    budget UI form and the POST /budgets endpoint use (db.merge on the
+    (user_id, category) composite key), so a budget set here shows up
+    in the UI immediately and vice versa.
+    """
+    if monthly_amount <= 0:
+        return {"error": "monthly_amount must be greater than 0."}
+
+    budget = Budget(user_id=user_id, category=category, monthly_amount=monthly_amount)
+    db.merge(budget)
+    db.commit()
+    return {"category": category, "monthly_amount": monthly_amount, "status": "saved"}
+
+
 def forecast_next_month(db: Session, user_id: int) -> dict:
     """
     Very simple forecast: average total monthly spend over however many
@@ -358,6 +374,20 @@ TOOL_SCHEMAS = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
+        "name": "set_budget",
+        "description": "Create or update a monthly budget for a category - e.g. 'set my rent budget to $3000/month'. "
+        "Overwrites any existing budget for that category. Use get_budgets first if you need to check "
+        "whether one already exists and tell the user what it's changing from.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string", "description": "Exact category name, e.g. 'Rent', 'Food and Drink'."},
+                "monthly_amount": {"type": "number", "description": "Monthly budget amount in dollars. Must be greater than 0."},
+            },
+            "required": ["category", "monthly_amount"],
+        },
+    },
+    {
         "name": "forecast_next_month",
         "description": "Project next month's total spending based on historical monthly averages. Use for 'how much will I spend next month' type questions.",
         "input_schema": {"type": "object", "properties": {}},
@@ -410,6 +440,7 @@ TOOL_FUNCTIONS = {
     "detect_anomalies": detect_anomalies,
     "calculate_budget_status": calculate_budget_status,
     "get_budgets": get_budgets,
+    "set_budget": set_budget,
     "forecast_next_month": forecast_next_month,
     "compare_periods": compare_periods,
     "get_market_outlook": get_market_outlook,
