@@ -11,7 +11,7 @@ const SAMPLE_QUESTIONS = [
   "Forecast my spending for next month",
 ];
 
-export default function Chat() {
+export default function Chat({ onBudgetChanged }) {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
@@ -50,6 +50,11 @@ export default function Chat() {
       const { reply, remaining_today } = await api.sendChatMessage(text);
       if (typeof remaining_today === "number") setRemaining(remaining_today);
       setMessages((prev) => [...prev, { role: "assistant", text: reply }]);
+      // The agent may have just set/changed a budget (set_budget tool) -
+      // the reply doesn't say which tools ran, so just let the budget
+      // panel re-check; it's one cheap GET, not worth tracking tool names
+      // for.
+      onBudgetChanged?.();
     } catch (e) {
       setMessages((prev) => [
         ...prev,

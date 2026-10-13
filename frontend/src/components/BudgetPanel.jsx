@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { formatCategoryLabel } from "../format";
 
-export default function BudgetPanel({ monthRange }) {
+export default function BudgetPanel({ monthRange, refreshToken }) {
   const [budgets, setBudgets] = useState([]);
   const [spending, setSpending] = useState({});
   const [categories, setCategories] = useState([]);
@@ -34,8 +34,12 @@ export default function BudgetPanel({ monthRange }) {
 
   useEffect(() => {
     load();
+    // refreshToken has no value of its own - it's just bumped by the chat
+    // agent after a reply, in case that turn set/changed a budget via the
+    // set_budget tool, so this panel doesn't need a manual page refresh to
+    // pick it up.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [monthRange.start, monthRange.end]);
+  }, [monthRange.start, monthRange.end, refreshToken]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -13,6 +13,7 @@ const EMAIL_KEY = "finance_agent_email";
 
 export default function App() {
   const monthRange = useMonthRange();
+  const [budgetRefreshToken, setBudgetRefreshToken] = useState(0);
   const [authed, setAuthed] = useState(!!getAuthToken());
   const [email, setEmail] = useState(localStorage.getItem(EMAIL_KEY) || "");
   const [linked, setLinked] = useState(false);
@@ -106,8 +107,8 @@ export default function App() {
           <TransactionList />
           <MonthPicker range={monthRange} />
           <SpendingCharts monthRange={monthRange} />
-          <BudgetPanel monthRange={monthRange} />
-          <Chat />
+          <BudgetPanel monthRange={monthRange} refreshToken={budgetRefreshToken} />
+          <Chat onBudgetChanged={() => setBudgetRefreshToken((t) => t + 1)} />
         </main>
       )}
     </div>
